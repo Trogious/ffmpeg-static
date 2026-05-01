@@ -1,0 +1,282 @@
+name: Build Static FFmpeg
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: build-ffmpeg
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  FFMPEG_REPO: https://git.ffmpeg.org/ffmpeg.git
+  FFMPEG_BRANCH: release/8.1
+  PREFIX: /tmp/ffmpeg-deps
+  SRC: /tmp/src
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: arm64
+            arch: aarch64
+            arch_cflags: ""
+            target_os: linux
+            musl_secret: URL_MUSL_AARCH64
+            musl_dir: aarch64-linux-musl-cross
+            label: arm64
+          - name: arm64-rpi5
+            arch: aarch64
+            arch_cflags: "-mcpu=cortex-a76"
+            target_os: linux
+            musl_secret: URL_MUSL_AARCH64
+            musl_dir: aarch64-linux-musl-cross
+            label: arm64-rpi5
+          - name: amd64
+            arch: x86_64
+            arch_cflags: ""
+            target_os: linux
+            musl_secret: URL_MUSL_X86_64
+            musl_dir: x86_64-linux-musl-cross
+            label: amd64
+          - name: win64
+            arch: x86_64
+            arch_cflags: ""
+            target_os: windows
+            label: win64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            autoconf automake autopoint autotools-dev build-essential cmake git \
+            gettext libtool meson nasm ninja-build 7zip pkg-config texinfo wget
+
+      - name: Set up ${{ matrix.arch }} musl cross-compiler
+        if: matrix.target_os == 'linux'
+        run: |
+          wget -q "${{ secrets[matrix.musl_secret] }}" -O musl-cross.tar.xz
+          tar xf musl-cross.tar.xz -C /opt
+          echo "/opt/${{ matrix.musl_dir }}/bin" >> $GITHUB_PATH
+
+      - name: Set up mingw-w64 cross-compiler
+        if: matrix.target_os == 'windows'
+        run: |
+          sudo apt-get install -y gcc-mingw-w64-x86-64-posix g++-mingw-w64-x86-64-posix
+
+      - name: Clone FFmpeg source
+        id: ffmpeg
+        run: |
+          mkdir -p $SRC
+          git clone --branch $FFMPEG_BRANCH --depth 1 $FFMPEG_REPO $SRC/ffmpeg
+          cd $SRC/ffmpeg
+          echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "full_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "date=$(git log -1 --format=%cd --date=short)" >> $GITHUB_OUTPUT
+
+      - name: Build static FFmpeg (${{ matrix.name }})
+        run: |
+          export FFMPEG_SRC="$SRC/ffmpeg"
+          export URL_ZLIB="${{ secrets.URL_ZLIB }}"
+          export URL_GMP="${{ secrets.URL_GMP }}"
+          export ARCH="${{ matrix.arch }}"
+          export ARCH_CFLAGS="${{ matrix.arch_cflags }}"
+          export TARGET_OS="${{ matrix.target_os }}"
+          export VARIANT_LABEL="${{ matrix.label }}"
+          bash build.sh
+
+      - name: Verify fully static binaries (Linux)
+        if: matrix.target_os == 'linux'
+        run: |
+          for bin in ffmpeg ffprobe; do
+            echo "=== $bin ==="
+            file $SRC/ffmpeg/$bin
+            if ${{ matrix.arch }}-linux-musl-readelf -d $SRC/ffmpeg/$bin 2>/dev/null | grep -q NEEDED; then
+              echo "::error::$bin is NOT fully static"
+              ${{ matrix.arch }}-linux-musl-readelf -d $SRC/ffmpeg/$bin
+              exit 1
+            fi
+            echo "OK — fully statically linked"
+          done
+
+      - name: Verify static binaries (Windows)
+        if: matrix.target_os == 'windows'
+        run: |
+          ALLOWED="KERNEL32.dll|msvcrt.dll|ADVAPI32.dll|WS2_32.dll|WSOCK32.dll|SHELL32.dll|USER32.dll|GDI32.dll|SECUR32.dll|CRYPT32.dll|ncrypt.dll|bcrypt.dll|IPHLPAPI.DLL|ole32.dll|OLEAUT32.dll|SHLWAPI.dll|AVICAP32.dll"
+          for bin in ffmpeg.exe ffprobe.exe; do
+            echo "=== $bin ==="
+            file $SRC/ffmpeg/$bin
+            DLLS=$(x86_64-w64-mingw32-objdump -p $SRC/ffmpeg/$bin | grep "DLL Name:" | awk '{print $3}')
+            echo "DLL imports: $DLLS"
+            for dll in $DLLS; do
+              if ! echo "$dll" | grep -qiE "^($ALLOWED)$"; then
+                echo "::error::$bin imports non-system DLL: $dll"
+                exit 1
+              fi
+            done
+            echo "OK — only system DLL imports"
+          done
+
+      - name: Package artifacts (Linux)
+        if: matrix.target_os == 'linux'
+        run: |
+          mkdir -p /tmp/pkg
+          cp $SRC/ffmpeg/ffmpeg $SRC/ffmpeg/ffprobe /tmp/pkg/
+          ${{ matrix.arch }}-linux-musl-strip /tmp/pkg/ffmpeg /tmp/pkg/ffprobe
+          cp $SRC/versions.txt /tmp/pkg/
+          cd /tmp/pkg
+          7z a -mx9 -m0=lzma -mf=off ffmpeg-8.1-static-${{ matrix.label }}.7z ffmpeg
+          7z a -mx9 -m0=lzma -mf=off ffprobe-8.1-static-${{ matrix.label }}.7z ffprobe
+
+      - name: Package artifacts (Windows)
+        if: matrix.target_os == 'windows'
+        run: |
+          mkdir -p /tmp/pkg
+          cp $SRC/ffmpeg/ffmpeg.exe $SRC/ffmpeg/ffprobe.exe /tmp/pkg/
+          x86_64-w64-mingw32-strip /tmp/pkg/ffmpeg.exe /tmp/pkg/ffprobe.exe
+          cp $SRC/versions.txt /tmp/pkg/
+          cd /tmp/pkg
+          7z a -mx9 -m0=lzma -mf=off ffmpeg-8.1-static-${{ matrix.label }}.7z ffmpeg.exe
+          7z a -mx9 -m0=lzma -mf=off ffprobe-8.1-static-${{ matrix.label }}.7z ffprobe.exe
+
+      - name: Upload build artifacts
+
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-${{ matrix.label }}
+          path: |
+            /tmp/pkg/ffmpeg-8.1-static-${{ matrix.label }}.7z
+            /tmp/pkg/ffprobe-8.1-static-${{ matrix.label }}.7z
+            /tmp/pkg/versions.txt
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    if: needs.build.result == 'success'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone FFmpeg for version info
+        id: ffmpeg
+        run: |
+          git clone --branch $FFMPEG_BRANCH --depth 1 $FFMPEG_REPO /tmp/ffmpeg-src
+          cd /tmp/ffmpeg-src
+          echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "full_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "date=$(git log -1 --format=%cd --date=short)" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/artifacts
+
+      - name: Create GitHub release
+
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          COMMIT="${{ steps.ffmpeg.outputs.short_sha }}"
+          TAG="v8.1-${COMMIT}"
+
+          VERSIONS="/tmp/artifacts/ffmpeg-arm64/versions.txt"
+
+          # Purpose lookup for each library
+          declare -A PURPOSE=(
+            [zlib]="Compression"
+            [bzip2]="Compression"
+            [libpng]="PNG support"
+            [libogg]="Ogg container"
+            [libvorbis]="Vorbis audio"
+            [opus]="Opus audio"
+            [lame]="MP3 encoding"
+            [speex]="Speex audio"
+            [opencore-amr]="AMR-NB / AMR-WB decoding"
+            [vo-amrwbenc]="AMR-WB encoding"
+            [libsoxr]="High-quality resampling"
+            [x264]="H.264 encoding"
+            [x265]="HEVC encoding"
+            [libvpx]="VP8 / VP9"
+            [libaom]="AV1 encoding / decoding"
+            [dav1d]="AV1 decoding (fast)"
+            [libtheora]="Theora"
+            [xvidcore]="MPEG-4 Part 2"
+            [openjpeg]="JPEG 2000"
+            [libwebp]="WebP"
+            [zimg]="zscale filter"
+            [vid.stab]="Video stabilization"
+            [libgme]="Game music emulation"
+            [freetype]="Text rendering"
+            [fribidi]="BiDi text"
+            [harfbuzz]="Text shaping"
+            [libass]="Subtitle rendering"
+            [libzvbi]="Teletext"
+            [gmp]="Arithmetic (GnuTLS dep)"
+            [nettle]="Crypto (GnuTLS dep)"
+            [gnutls]="TLS / HTTPS"
+            [mbedtls]="TLS (SRT encryption)"
+            [libsrt]="SRT protocol"
+            [libvmaf]="VMAF quality metric"
+            [rubberband]="Time-stretching / pitch-shifting"
+            [ffmpeg]="FFmpeg"
+          )
+
+          # Build library table from versions.txt
+          LIB_TABLE="| Library | Version | Purpose |
+          |---------|---------|---------|"
+          while read -r name version; do
+            [ -z "$name" ] && continue
+            desc="${PURPOSE[$name]:-}"
+            LIB_TABLE="${LIB_TABLE}
+          | ${name} | ${version} | ${desc} |"
+          done < "$VERSIONS"
+
+          cat > /tmp/notes.md <<EOF
+          Fully static FFmpeg builds for **Linux ARM64**, **Linux x86_64**, and **Windows x86_64**.
+
+          **Source:** \`${FFMPEG_BRANCH}\` @ [\`${COMMIT}\`](https://git.ffmpeg.org/gitweb/ffmpeg.git/commit/${{ steps.ffmpeg.outputs.full_sha }})
+          **Commit date:** ${{ steps.ffmpeg.outputs.date }}
+
+          ### Build variants
+          | Variant | Target | Notes |
+          |---------|--------|-------|
+          | \`arm64\` | Generic ARMv8-A | All ARM64 Linux systems |
+          | \`arm64-rpi5\` | Cortex-A76 (\`-mcpu=cortex-a76\`) | Optimized for Raspberry Pi 5 |
+          | \`amd64\` | x86_64 | All x86_64 Linux systems |
+          | \`win64\` | Windows x86_64 | TLS via SChannel, no libzvbi |
+
+          ### Included libraries
+          ${LIB_TABLE}
+
+          ### Release artifacts
+          - \`ffmpeg-8.1-static-arm64.7z\` / \`ffprobe-8.1-static-arm64.7z\` — Generic ARM64
+          - \`ffmpeg-8.1-static-arm64-rpi5.7z\` / \`ffprobe-8.1-static-arm64-rpi5.7z\` — RPi5 optimized
+          - \`ffmpeg-8.1-static-amd64.7z\` / \`ffprobe-8.1-static-amd64.7z\` — x86_64
+          - \`ffmpeg-8.1-static-win64.7z\` / \`ffprobe-8.1-static-win64.7z\` — Windows x86_64
+          - \`versions.txt\` — Compiled library versions
+
+          Linux toolchain: musl 1.2.6, GCC 14.3.0, binutils 2.44 — fully static, zero runtime dependencies.
+          Windows toolchain: mingw-w64 — statically linked, system DLLs only.
+          Binaries are stripped.
+          EOF
+
+          gh release create "$TAG" \
+            --title "FFmpeg 8.1 (${COMMIT})" \
+            --notes-file /tmp/notes.md \
+            /tmp/artifacts/ffmpeg-arm64/ffmpeg-8.1-static-arm64.7z \
+            /tmp/artifacts/ffmpeg-arm64/ffprobe-8.1-static-arm64.7z \
+            /tmp/artifacts/ffmpeg-arm64-rpi5/ffmpeg-8.1-static-arm64-rpi5.7z \
+            /tmp/artifacts/ffmpeg-arm64-rpi5/ffprobe-8.1-static-arm64-rpi5.7z \
+            /tmp/artifacts/ffmpeg-amd64/ffmpeg-8.1-static-amd64.7z \
+            /tmp/artifacts/ffmpeg-amd64/ffprobe-8.1-static-amd64.7z \
+            /tmp/artifacts/ffmpeg-win64/ffmpeg-8.1-static-win64.7z \
+            /tmp/artifacts/ffmpeg-win64/ffprobe-8.1-static-win64.7z \
+            /tmp/artifacts/ffmpeg-arm64/versions.txt
