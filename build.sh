@@ -263,12 +263,11 @@ make -j"$NPROC"
 make install
 ver "x264" "$(git rev-parse --short HEAD)"
 
-log "x265"
+log "x265 4.3"
 cd "$SRC"
-git clone https://bitbucket.org/multicoreware/x265_git.git
+git clone --depth 1 --branch 4.3 https://github.com/Multicorewareinc/x265.git x265_git
 cd x265_git
-git checkout cfee963
-X265_VER="$(git rev-parse --short HEAD)"
+X265_VER="4.3"
 mkdir -p build/cross && cd build/cross
 do_cmake ../../source \
   -DENABLE_SHARED=OFF -DENABLE_CLI=OFF \
@@ -308,6 +307,28 @@ Cflags: -I\${includedir}
 X265PC
 # Windows has no libdl
 [ "$TARGET_OS" = "windows" ] && sed -i 's/ -ldl//g' "$PREFIX/lib/pkgconfig/x265.pc"
+# Fail fast if libx265.a does not link statically. This mirrors the link test
+# FFmpeg's configure runs for --enable-libx265 (whose failure is opaque and
+# comes ~30 minutes later). Keep the trailing flags in sync with the FFmpeg
+# --extra-ldflags / --extra-libs below.
+echo "=== x265: static link check ==="
+cat > /tmp/x265test.c <<'X265TEST'
+#include <x265.h>
+int main(void) { const x265_api *api = x265_api_get(0); return api ? 0 : 1; }
+X265TEST
+if [ "$TARGET_OS" = "windows" ]; then
+  X265_TEST_LD="-static -static-libgcc -static-libstdc++ -lstdc++ -lpthread -lm -lws2_32 -liphlpapi -lbcrypt -lcrypt32 -lsecur32"
+else
+  X265_TEST_LD="-static -lstdc++ -lpthread -lm -latomic"
+fi
+if ! "$CROSS_CC" /tmp/x265test.c \
+     $(pkg-config --cflags --static x265) $(pkg-config --libs --static x265) \
+     $X265_TEST_LD -o /tmp/x265test_out; then
+  echo "FATAL: libx265.a does not link statically — see linker errors above"
+  exit 1
+fi
+rm -f /tmp/x265test.c /tmp/x265test_out
+echo "x265 static link: OK"
 ver "x265" "$X265_VER"
 
 log "libvpx 1.14.1"
@@ -734,7 +755,8 @@ ver "rubberband" "3.3.0"
 log "FFmpeg"
 cd "$FFMPEG_SRC"
 FFMPEG_GIT_VER="$(git rev-parse --short HEAD)"
-# Remove .git so version.sh uses RELEASE file (8.1) instead of git describe hash
+FFMPEG_RELEASE="$(cat RELEASE)"   # e.g. 9.0.2 — what version.sh reports once .git is gone
+# Remove .git so version.sh uses the RELEASE file (e.g. 9.0.2) instead of a git-describe hash
 rm -rf .git
 
 # Collect any .pc files installed outside $PREFIX/lib/pkgconfig (e.g. lib64/pkgconfig/)
@@ -897,6 +919,6 @@ PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig" \
 fi
 
 make -j"$NPROC"
-ver "ffmpeg" "8.1-$FFMPEG_GIT_VER"
+ver "ffmpeg" "${FFMPEG_RELEASE}-${FFMPEG_GIT_VER}"
 
 log "Build complete"

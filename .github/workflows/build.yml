@@ -12,7 +12,8 @@ permissions:
 
 env:
   FFMPEG_REPO: https://git.ffmpeg.org/ffmpeg.git
-  FFMPEG_BRANCH: release/8.1
+  FFMPEG_BRANCH: release/9.0
+  FFMPEG_VERSION: "9.0"   # major.minor of FFMPEG_BRANCH — used for artifact names, tag and title
   PREFIX: /tmp/ffmpeg-deps
   SRC: /tmp/src
 
@@ -133,8 +134,8 @@ jobs:
           ${{ matrix.arch }}-linux-musl-strip /tmp/pkg/ffmpeg /tmp/pkg/ffprobe
           cp $SRC/versions.txt /tmp/pkg/
           cd /tmp/pkg
-          7z a -mx9 -m0=lzma -mf=off ffmpeg-8.1-static-${{ matrix.label }}.7z ffmpeg
-          7z a -mx9 -m0=lzma -mf=off ffprobe-8.1-static-${{ matrix.label }}.7z ffprobe
+          7z a -mx9 -m0=lzma -mf=off ffmpeg-${FFMPEG_VERSION}-static-${{ matrix.label }}.7z ffmpeg
+          7z a -mx9 -m0=lzma -mf=off ffprobe-${FFMPEG_VERSION}-static-${{ matrix.label }}.7z ffprobe
 
       - name: Package artifacts (Windows)
         if: matrix.target_os == 'windows'
@@ -144,8 +145,8 @@ jobs:
           x86_64-w64-mingw32-strip /tmp/pkg/ffmpeg.exe /tmp/pkg/ffprobe.exe
           cp $SRC/versions.txt /tmp/pkg/
           cd /tmp/pkg
-          7z a -mx9 -m0=lzma -mf=off ffmpeg-8.1-static-${{ matrix.label }}.7z ffmpeg.exe
-          7z a -mx9 -m0=lzma -mf=off ffprobe-8.1-static-${{ matrix.label }}.7z ffprobe.exe
+          7z a -mx9 -m0=lzma -mf=off ffmpeg-${FFMPEG_VERSION}-static-${{ matrix.label }}.7z ffmpeg.exe
+          7z a -mx9 -m0=lzma -mf=off ffprobe-${FFMPEG_VERSION}-static-${{ matrix.label }}.7z ffprobe.exe
 
       - name: Upload build artifacts
 
@@ -153,8 +154,8 @@ jobs:
         with:
           name: ffmpeg-${{ matrix.label }}
           path: |
-            /tmp/pkg/ffmpeg-8.1-static-${{ matrix.label }}.7z
-            /tmp/pkg/ffprobe-8.1-static-${{ matrix.label }}.7z
+            /tmp/pkg/ffmpeg-${{ env.FFMPEG_VERSION }}-static-${{ matrix.label }}.7z
+            /tmp/pkg/ffprobe-${{ env.FFMPEG_VERSION }}-static-${{ matrix.label }}.7z
             /tmp/pkg/versions.txt
 
   release:
@@ -185,7 +186,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           COMMIT="${{ steps.ffmpeg.outputs.short_sha }}"
-          TAG="v8.1-${COMMIT}"
+          TAG="v${FFMPEG_VERSION}-${COMMIT}"
 
           VERSIONS="/tmp/artifacts/ffmpeg-arm64/versions.txt"
 
@@ -257,10 +258,10 @@ jobs:
           ${LIB_TABLE}
 
           ### Release artifacts
-          - \`ffmpeg-8.1-static-arm64.7z\` / \`ffprobe-8.1-static-arm64.7z\` — Generic ARM64
-          - \`ffmpeg-8.1-static-arm64-rpi5.7z\` / \`ffprobe-8.1-static-arm64-rpi5.7z\` — RPi5 optimized
-          - \`ffmpeg-8.1-static-amd64.7z\` / \`ffprobe-8.1-static-amd64.7z\` — x86_64
-          - \`ffmpeg-8.1-static-win64.7z\` / \`ffprobe-8.1-static-win64.7z\` — Windows x86_64
+          - \`ffmpeg-${FFMPEG_VERSION}-static-arm64.7z\` / \`ffprobe-${FFMPEG_VERSION}-static-arm64.7z\` — Generic ARM64
+          - \`ffmpeg-${FFMPEG_VERSION}-static-arm64-rpi5.7z\` / \`ffprobe-${FFMPEG_VERSION}-static-arm64-rpi5.7z\` — RPi5 optimized
+          - \`ffmpeg-${FFMPEG_VERSION}-static-amd64.7z\` / \`ffprobe-${FFMPEG_VERSION}-static-amd64.7z\` — x86_64
+          - \`ffmpeg-${FFMPEG_VERSION}-static-win64.7z\` / \`ffprobe-${FFMPEG_VERSION}-static-win64.7z\` — Windows x86_64
           - \`versions.txt\` — Compiled library versions
 
           Linux toolchain: musl 1.2.6, GCC 14.3.0, binutils 2.44 — fully static, zero runtime dependencies.
@@ -269,14 +270,14 @@ jobs:
           EOF
 
           gh release create "$TAG" \
-            --title "FFmpeg 8.1 (${COMMIT})" \
+            --title "FFmpeg ${FFMPEG_VERSION} (${COMMIT})" \
             --notes-file /tmp/notes.md \
-            /tmp/artifacts/ffmpeg-arm64/ffmpeg-8.1-static-arm64.7z \
-            /tmp/artifacts/ffmpeg-arm64/ffprobe-8.1-static-arm64.7z \
-            /tmp/artifacts/ffmpeg-arm64-rpi5/ffmpeg-8.1-static-arm64-rpi5.7z \
-            /tmp/artifacts/ffmpeg-arm64-rpi5/ffprobe-8.1-static-arm64-rpi5.7z \
-            /tmp/artifacts/ffmpeg-amd64/ffmpeg-8.1-static-amd64.7z \
-            /tmp/artifacts/ffmpeg-amd64/ffprobe-8.1-static-amd64.7z \
-            /tmp/artifacts/ffmpeg-win64/ffmpeg-8.1-static-win64.7z \
-            /tmp/artifacts/ffmpeg-win64/ffprobe-8.1-static-win64.7z \
+            /tmp/artifacts/ffmpeg-arm64/ffmpeg-${FFMPEG_VERSION}-static-arm64.7z \
+            /tmp/artifacts/ffmpeg-arm64/ffprobe-${FFMPEG_VERSION}-static-arm64.7z \
+            /tmp/artifacts/ffmpeg-arm64-rpi5/ffmpeg-${FFMPEG_VERSION}-static-arm64-rpi5.7z \
+            /tmp/artifacts/ffmpeg-arm64-rpi5/ffprobe-${FFMPEG_VERSION}-static-arm64-rpi5.7z \
+            /tmp/artifacts/ffmpeg-amd64/ffmpeg-${FFMPEG_VERSION}-static-amd64.7z \
+            /tmp/artifacts/ffmpeg-amd64/ffprobe-${FFMPEG_VERSION}-static-amd64.7z \
+            /tmp/artifacts/ffmpeg-win64/ffmpeg-${FFMPEG_VERSION}-static-win64.7z \
+            /tmp/artifacts/ffmpeg-win64/ffprobe-${FFMPEG_VERSION}-static-win64.7z \
             /tmp/artifacts/ffmpeg-arm64/versions.txt
