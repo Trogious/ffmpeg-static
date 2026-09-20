@@ -143,27 +143,27 @@ install -m644 libbz2.a "$PREFIX/lib/"
 install -m644 bzlib.h "$PREFIX/include/"
 ver "bzip2" "1.0.8"
 
-log "libpng 1.6.43"
+log "libpng 1.6.58"
 cd "$SRC"
-wget -q -O libpng-1.6.43.tar.gz \
-  "https://downloads.sourceforge.net/project/libpng/libpng16/1.6.43/libpng-1.6.43.tar.gz"
-tar xzf libpng-1.6.43.tar.gz && cd libpng-1.6.43
+wget -q -O libpng-1.6.58.tar.gz \
+  "https://downloads.sourceforge.net/project/libpng/libpng16/1.6.58/libpng-1.6.58.tar.gz"
+tar xzf libpng-1.6.58.tar.gz && cd libpng-1.6.58
 CPPFLAGS="-I$PREFIX/include" LDFLAGS="-L$PREFIX/lib" \
   ./configure --prefix="$PREFIX" --host="$HOST" \
   --enable-static --disable-shared
 make -j"$NPROC"
 make install
-ver "libpng" "1.6.43"
+ver "libpng" "1.6.58"
 
-log "libogg 1.3.5"
+log "libogg 1.3.6"
 cd "$SRC"
-wget -q https://downloads.xiph.org/releases/ogg/libogg-1.3.5.tar.gz
-tar xzf libogg-1.3.5.tar.gz && cd libogg-1.3.5
+wget -q https://downloads.xiph.org/releases/ogg/libogg-1.3.6.tar.gz
+tar xzf libogg-1.3.6.tar.gz && cd libogg-1.3.6
 ./configure --prefix="$PREFIX" --host="$HOST" \
   --enable-static --disable-shared
 make -j"$NPROC"
 make install
-ver "libogg" "1.3.5"
+ver "libogg" "1.3.6"
 
 # ════════════════════════════════════════════════════════════════════
 # TIER 1 — Audio codecs
@@ -180,27 +180,31 @@ make -j"$NPROC"
 make install
 ver "libvorbis" "1.3.7"
 
-log "opus 1.5.2"
+log "opus 1.6.1"
 cd "$SRC"
-git clone --depth 1 --branch v1.5.2 https://github.com/xiph/opus.git
-cd opus && ./autogen.sh
+# Release tarball ships configure and the DNN weight files, so no autogen.sh
+# (which downloads a model tarball from media.xiph.org at build time)
+wget -q https://downloads.xiph.org/releases/opus/opus-1.6.1.tar.gz
+tar xzf opus-1.6.1.tar.gz && cd opus-1.6.1
 ./configure --prefix="$PREFIX" --host="$HOST" \
   --enable-static --disable-shared \
   --disable-doc --disable-extra-programs
 make -j"$NPROC"
 make install
-ver "opus" "1.5.2"
+ver "opus" "1.6.1"
 
-log "lame 3.100"
+log "lame 4.0"
 cd "$SRC"
-wget -q -O lame-3.100.tar.gz \
-  "https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz"
-tar xzf lame-3.100.tar.gz && cd lame-3.100
+wget -q -O lame-4.0.tar.gz \
+  "https://downloads.sourceforge.net/project/lame/lame/4.0/lame-4.0.tar.gz"
+tar xzf lame-4.0.tar.gz && cd lame-4.0
+# --disable-decoder: since 3.101 the decoder needs an external libmpg123
+# (configure errors out without it); FFmpeg only uses the encoder.
 ./configure --prefix="$PREFIX" --host="$HOST" \
-  --enable-static --disable-shared --disable-frontend
+  --enable-static --disable-shared --disable-frontend --disable-decoder
 make -j"$NPROC"
 make install
-ver "lame" "3.100"
+ver "lame" "4.0"
 
 log "speex 1.2.1"
 cd "$SRC"
@@ -331,9 +335,9 @@ rm -f /tmp/x265test.c /tmp/x265test_out
 echo "x265 static link: OK"
 ver "x265" "$X265_VER"
 
-log "libvpx 1.14.1"
+log "libvpx 1.17.0"
 cd "$SRC"
-git clone --depth 1 --branch v1.14.1 \
+git clone --depth 1 --branch v1.17.0 \
   https://chromium.googlesource.com/webm/libvpx.git
 cd libvpx
 VPX_AS="${CROSS_PREFIX}as"
@@ -348,11 +352,11 @@ AR="$CROSS_AR" AS="$VPX_AS" STRIP="$CROSS_STRIP" \
   --enable-pic --enable-vp9-highbitdepth
 make -j"$NPROC"
 make install
-ver "libvpx" "1.14.1"
+ver "libvpx" "1.17.0"
 
 log "libaom (AV1)"
 cd "$SRC"
-git clone --depth 1 --branch v3.9.1 \
+git clone --depth 1 --branch v3.15.0 \
   https://aomedia.googlesource.com/aom libaom
 mkdir libaom-build && cd libaom-build
 AOM_EXTRA=""
@@ -360,7 +364,7 @@ AOM_EXTRA=""
 do_cmake ../libaom \
   -DAOM_TARGET_CPU="$AOM_CPU" \
   -DENABLE_TESTS=OFF -DENABLE_EXAMPLES=OFF \
-  -DENABLE_DOCS=OFF -DENABLE_TOOLS=OFF \
+  -DENABLE_DOCS=OFF -DENABLE_TOOLS=OFF -DENABLE_APPS=OFF \
   $AOM_EXTRA
 cmake --build . -j "$NPROC"
 echo "=== libaom: .a files in build tree ==="
@@ -391,39 +395,39 @@ includedir=\${prefix}/include
 
 Name: aom
 Description: Alliance for Open Media AV1 codec library
-Version: 3.9.1
+Version: 3.15.0
 Libs: -L\${libdir} -laom
 Libs.private: -lm -lpthread
 Cflags: -I\${includedir}
 AOMPC
 fi
-ver "libaom" "3.9.1"
+ver "libaom" "3.15.0"
 
 log "dav1d (AV1 decoder)"
 cd "$SRC"
-git clone --depth 1 --branch 1.4.3 \
+git clone --depth 1 --branch 1.5.4 \
   https://code.videolan.org/videolan/dav1d.git
 cd dav1d
 meson setup build --cross-file "$MCROSS" --prefix="$PREFIX" \
   -Denable_tests=false -Denable_examples=false -Denable_tools=false
 ninja -C build && ninja -C build install
-ver "dav1d" "1.4.3"
+ver "dav1d" "1.5.4"
 
-log "libtheora 1.1.1"
+log "libtheora 1.2.0"
 cd "$SRC"
-wget -q https://downloads.xiph.org/releases/theora/libtheora-1.1.1.tar.bz2
-tar xjf libtheora-1.1.1.tar.bz2 && cd libtheora-1.1.1
-# 2009-era config.sub doesn't recognise aarch64 — overwrite with modern copies
+wget -q https://downloads.xiph.org/releases/theora/libtheora-1.2.0.tar.xz
+tar xJf libtheora-1.2.0.tar.xz && cd libtheora-1.2.0
+# Keep config.sub/config.guess current for the *-linux-musl triplets
 cp /usr/share/misc/config.sub .
 cp /usr/share/misc/config.guess .
 ./configure --prefix="$PREFIX" --host="$HOST" \
   --enable-static --disable-shared \
-  --disable-examples --disable-spec \
+  --disable-examples --disable-spec --disable-doc \
   --with-ogg="$PREFIX" --with-vorbis="$PREFIX" \
   --disable-asm
 make -j"$NPROC"
 make install
-ver "libtheora" "1.1.1"
+ver "libtheora" "1.2.0"
 
 log "xvidcore 1.3.7"
 cd "$SRC"
@@ -443,23 +447,24 @@ if [ "$TARGET_OS" = "windows" ]; then
 fi
 ver "xvidcore" "1.3.7"
 
-log "openjpeg 2.5.2"
+log "openjpeg 2.5.4"
 cd "$SRC"
-git clone --depth 1 --branch v2.5.2 \
+git clone --depth 1 --branch v2.5.4 \
   https://github.com/uclouvain/openjpeg.git
 mkdir openjpeg/build && cd openjpeg/build
 do_cmake .. -DBUILD_CODEC=OFF -DBUILD_TESTING=OFF
 make -j"$NPROC"
 make install
-ver "openjpeg" "2.5.2"
+echo "--- libopenjp2.pc ---"; cat "$PREFIX/lib/pkgconfig/libopenjp2.pc" 2>/dev/null || true
+ver "openjpeg" "2.5.4"
 
 # ════════════════════════════════════════════════════════════════════
 # TIER 3 — Image, processing, misc
 # ════════════════════════════════════════════════════════════════════
 
-log "libwebp 1.4.0"
+log "libwebp 1.6.0"
 cd "$SRC"
-git clone --depth 1 --branch v1.4.0 \
+git clone --depth 1 --branch v1.6.0 \
   https://chromium.googlesource.com/webm/libwebp.git
 mkdir libwebp/build && cd libwebp/build
 do_cmake .. \
@@ -470,80 +475,93 @@ do_cmake .. \
   -DWEBP_BUILD_ANIM_UTILS=OFF
 make -j"$NPROC"
 make install
-ver "libwebp" "1.4.0"
+ver "libwebp" "1.6.0"
 
-log "zimg 3.0.5"
+log "zimg 3.0.6"
 cd "$SRC"
-git clone --depth 1 --branch release-3.0.5 \
+git clone --depth 1 --branch release-3.0.6 \
   https://github.com/sekrit-twc/zimg.git
 cd zimg && ./autogen.sh
 ./configure --prefix="$PREFIX" --host="$HOST" \
   --enable-static --disable-shared
 make -j"$NPROC"
 make install
-ver "zimg" "3.0.5"
+ver "zimg" "3.0.6"
 
-log "vidstab 1.1.1"
+log "vidstab 1.1.2"
 cd "$SRC"
-git clone --depth 1 --branch v1.1.1 \
+git clone --depth 1 --branch v1.1.2 \
   https://github.com/georgmartius/vid.stab.git
 mkdir vid.stab/build && cd vid.stab/build
 do_cmake ..
 make -j"$NPROC"
 make install
-ver "vid.stab" "1.1.1"
+ver "vid.stab" "1.1.2"
 
-log "libgme 0.6.3"
+log "libgme 0.6.5"
 cd "$SRC"
-git clone --depth 1 --branch 0.6.3 \
+git clone --depth 1 --branch 0.6.5 \
   https://github.com/libgme/game-music-emu.git
 mkdir game-music-emu/build && cd game-music-emu/build
-do_cmake .. -DENABLE_UBSAN=OFF
+do_cmake .. -DGME_BUILD_SHARED=OFF -DGME_BUILD_STATIC=ON \
+  -DGME_ENABLE_UBSAN=OFF -DGME_BUILD_TESTING=OFF -DGME_BUILD_EXAMPLES=OFF
 make -j"$NPROC"
 make install
-ver "libgme" "0.6.3"
+# 0.6.5 fills Libs.private from CMAKE_CXX_IMPLICIT_LINK_LIBRARIES, which drags
+# in -lgcc_s/-lgcc/-lc: no static libgcc_s on musl, and a libgcc_s DLL import
+# on Windows. Same fixup as srt.pc.
+if [ -f "$PREFIX/lib/pkgconfig/libgme.pc" ]; then
+  sed -i 's/ -lgcc_s//g; s/ -lgcc\b//g; s/ -lc\b//g' "$PREFIX/lib/pkgconfig/libgme.pc"
+  echo "--- libgme.pc after fixup ---"; cat "$PREFIX/lib/pkgconfig/libgme.pc"
+fi
+ver "libgme" "0.6.5"
 
 # ════════════════════════════════════════════════════════════════════
 # TIER 4 — Text & subtitle rendering
 # ════════════════════════════════════════════════════════════════════
 
-log "freetype 2.13.2"
+log "freetype 2.14.3"
 cd "$SRC"
-wget -q https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.xz
-tar xJf freetype-2.13.2.tar.xz && cd freetype-2.13.2
+wget -q https://download.savannah.gnu.org/releases/freetype/freetype-2.14.3.tar.xz
+tar xJf freetype-2.14.3.tar.xz && cd freetype-2.14.3
 mkdir build && cd build
 do_cmake .. \
   -DFT_REQUIRE_ZLIB=ON -DFT_REQUIRE_PNG=ON \
   -DFT_DISABLE_BZIP2=ON -DFT_DISABLE_HARFBUZZ=ON
 make -j"$NPROC"
 make install
-ver "freetype" "2.13.2"
+ver "freetype" "2.14.3"
 
 log "fribidi"
 cd "$SRC"
-git clone --depth 1 --branch v1.0.15 \
+git clone --depth 1 --branch v1.0.17 \
   https://github.com/fribidi/fribidi.git
 cd fribidi
 meson setup build --cross-file "$MCROSS" --prefix="$PREFIX" \
   -Ddocs=false -Dtests=false
 ninja -C build && ninja -C build install
-ver "fribidi" "1.0.15"
+ver "fribidi" "1.0.17"
 
-log "harfbuzz 8.5.0"
+log "harfbuzz 14.4.0"
 cd "$SRC"
-git clone --depth 1 --branch 8.5.0 \
+git clone --depth 1 --branch 14.4.0 \
   https://github.com/harfbuzz/harfbuzz.git
 cd harfbuzz
+# harfbuzz >= 13 enables extra sub-libraries by default (raster, vector,
+# gpu — which needs host python3 — subset, utilities). FFmpeg and libass only
+# need the core shaper, so keep the build to libharfbuzz.a.
 meson setup build --cross-file "$MCROSS" --prefix="$PREFIX" \
   -Dfreetype=enabled -Dglib=disabled -Dgobject=disabled \
   -Dcairo=disabled -Dicu=disabled -Dcoretext=disabled \
+  -Draster=disabled -Dvector=disabled -Dgpu=disabled -Dgpu_demo=disabled \
+  -Dsubset=disabled -Dutilities=disabled \
   -Dtests=disabled -Ddocs=disabled -Dbenchmark=disabled
 ninja -C build && ninja -C build install
-ver "harfbuzz" "8.5.0"
+ver "harfbuzz" "14.4.0"
 
-log "libass 0.17.3"
+log "libass 0.17.5"
 cd "$SRC"
-git clone --depth 1 --branch 0.17.3 \
+git clone --depth 1 --branch 0.17.5 \
   https://github.com/libass/libass.git
 cd libass && ./autogen.sh
 CPPFLAGS="-I$PREFIX/include" LDFLAGS="-L$PREFIX/lib" \
@@ -553,14 +571,14 @@ CPPFLAGS="-I$PREFIX/include" LDFLAGS="-L$PREFIX/lib" \
   --disable-require-system-font-provider
 make -j"$NPROC"
 make install
-ver "libass" "0.17.3"
+ver "libass" "0.17.5"
 
 if [ "$TARGET_OS" != "windows" ]; then
-log "libzvbi"
+log "libzvbi 0.2.45"
 cd "$SRC"
-git clone --depth 1 https://github.com/zapping-vbi/zvbi.git
+git clone --depth 1 --branch v0.2.45 https://github.com/zapping-vbi/zvbi.git
 cd zvbi
-ZVBI_VER="$(git rev-parse --short HEAD)"
+ZVBI_VER="0.2.45"
 autoreconf -fi
 CPPFLAGS="-I$PREFIX/include" LDFLAGS="-L$PREFIX/lib" \
   ac_cv_func_malloc_0_nonnull=yes ac_cv_func_realloc_0_nonnull=yes \
@@ -596,10 +614,10 @@ make -j"$NPROC"
 make install
 ver "gmp" "6.3.0"
 
-log "nettle 3.10"
+log "nettle 3.10.2"
 cd "$SRC"
-wget -q https://ftp.gnu.org/gnu/nettle/nettle-3.10.tar.gz
-tar xzf nettle-3.10.tar.gz && cd nettle-3.10
+wget -q https://ftp.gnu.org/gnu/nettle/nettle-3.10.2.tar.gz
+tar xzf nettle-3.10.2.tar.gz && cd nettle-3.10.2
 # CC_FOR_BUILD: nettle builds host-side tools (desdata, eccdata)
 NETTLE_EXTRA=""
 [ "$ARCH" = "aarch64" ] && NETTLE_EXTRA="--disable-fat"
@@ -613,12 +631,12 @@ CFLAGS="-O2 -fPIC" CPPFLAGS="-I$PREFIX/include" LDFLAGS="-L$PREFIX/lib" \
 [ "$ARCH" = "aarch64" ] && sed -i 's/-fpic/-fPIC/g' config.make
 make -j"$NPROC"
 make install
-ver "nettle" "3.10"
+ver "nettle" "3.10.2"
 
-log "gnutls 3.8.8"
+log "gnutls 3.8.13"
 cd "$SRC"
-wget -q https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.8.tar.xz
-tar xJf gnutls-3.8.8.tar.xz && cd gnutls-3.8.8
+wget -q https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.13.tar.xz
+tar xJf gnutls-3.8.13.tar.xz && cd gnutls-3.8.13
 CC_FOR_BUILD=gcc \
 CPPFLAGS="-I$PREFIX/include" LDFLAGS="-L$PREFIX/lib" \
   ./configure --prefix="$PREFIX" --host="$HOST" \
@@ -655,25 +673,25 @@ STUBEOF
 done
 # Verify gnutls resolves before continuing
 pkg-config --print-errors --exists gnutls || { echo "FATAL: gnutls still not found by pkg-config"; ls "$PREFIX/lib/pkgconfig/"*gnutls* "$PREFIX/lib/pkgconfig/"*nettle* "$PREFIX/lib/pkgconfig/"*hogweed* "$PREFIX/lib/pkgconfig/"*gmp* 2>/dev/null; exit 1; }
-ver "gnutls" "3.8.8"
+ver "gnutls" "3.8.13"
 fi # TARGET_OS != windows
 
 if [ "$TARGET_OS" = "windows" ]; then
-log "mbedTLS 3.6.2"
+log "mbedTLS 3.6.7"
 cd "$SRC"
-git clone --depth 1 --branch v3.6.2 --recurse-submodules https://github.com/Mbed-TLS/mbedtls.git
+git clone --depth 1 --branch v3.6.7 --recurse-submodules https://github.com/Mbed-TLS/mbedtls.git
 mkdir mbedtls/build && cd mbedtls/build
 do_cmake .. \
   -DENABLE_TESTING=OFF -DENABLE_PROGRAMS=OFF \
   -DUSE_SHARED_MBEDTLS_LIBRARY=OFF -DUSE_STATIC_MBEDTLS_LIBRARY=ON
 make -j"$NPROC"
 make install
-ver "mbedtls" "3.6.2"
+ver "mbedtls" "3.6.7"
 fi
 
-log "libsrt 1.5.3"
+log "libsrt 1.5.7"
 cd "$SRC"
-git clone --depth 1 --branch v1.5.3 https://github.com/Haivision/srt.git
+git clone --depth 1 --branch v1.5.7 https://github.com/Haivision/srt.git
 mkdir srt/build && cd srt/build
 SRT_ENCLIB=gnutls
 [ "$TARGET_OS" = "windows" ] && SRT_ENCLIB=mbedtls
@@ -720,25 +738,25 @@ if [ -f "$PREFIX/lib/pkgconfig/srt.pc" ]; then
     fi
   fi
 fi
-ver "libsrt" "1.5.3"
+ver "libsrt" "1.5.7"
 
 # ════════════════════════════════════════════════════════════════════
 # TIER 6 — Quality metrics & audio processing
 # ════════════════════════════════════════════════════════════════════
 
-log "libvmaf 3.0.0"
+log "libvmaf 3.2.1"
 cd "$SRC"
-git clone --depth 1 --branch v3.0.0 https://github.com/Netflix/vmaf.git
+git clone --depth 1 --branch v3.2.1 https://github.com/Netflix/vmaf.git
 cd vmaf/libvmaf
 meson setup build --cross-file "$MCROSS" --prefix="$PREFIX" \
   -Denable_tests=false -Denable_docs=false \
   -Dbuilt_in_models=true
 ninja -C build && ninja -C build install
-ver "libvmaf" "3.0.0"
+ver "libvmaf" "3.2.1"
 
-log "rubberband 3.3.0"
+log "rubberband 4.0.0"
 cd "$SRC"
-git clone --depth 1 --branch v3.3.0 \
+git clone --depth 1 --branch v4.0.0 \
   https://github.com/breakfastquay/rubberband.git
 cd rubberband
 meson setup build --cross-file "$MCROSS" --prefix="$PREFIX" \
@@ -746,7 +764,7 @@ meson setup build --cross-file "$MCROSS" --prefix="$PREFIX" \
   -Dcmdline=disabled -Djni=disabled \
   -Dlv2=disabled -Dvamp=disabled
 ninja -C build && ninja -C build install
-ver "rubberband" "3.3.0"
+ver "rubberband" "4.0.0"
 
 # ════════════════════════════════════════════════════════════════════
 # FINAL — FFmpeg

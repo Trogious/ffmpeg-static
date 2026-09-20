@@ -52,7 +52,7 @@ jobs:
             target_os: windows
             label: win64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install host build tools
         run: |
@@ -150,7 +150,7 @@ jobs:
 
       - name: Upload build artifacts
 
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ffmpeg-${{ matrix.label }}
           path: |
@@ -163,7 +163,7 @@ jobs:
     runs-on: ubuntu-24.04
     if: needs.build.result == 'success'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Clone FFmpeg for version info
         id: ffmpeg
@@ -176,7 +176,7 @@ jobs:
 
       - name: Download all artifacts
 
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: /tmp/artifacts
 
